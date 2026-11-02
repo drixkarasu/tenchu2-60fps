@@ -45,6 +45,8 @@ A DuckStation cheat-file patch for **Tenchu 2: Birth of the Stealth Assassins** 
 | `VSync timeout fix` | Cutscenes and menus play at the correct speed with an overclocked CPU. Works with or without the main patch. |
 | `Draw distance 2x` / `3x` / `4x` | Render distance multiplier, with the fog stretched to match. **Enable only one.** |
 
+How far you can see is limited by the game itself: it only keeps the level blocks around the camera in memory, about two blocks (32,000+ units) ahead. 2x already reaches that edge on most stages. Fog becomes fully dense at that distance whatever the preset. Higher presets mainly draw stage objects (props) further out: about 2x their original range with `2x`, and the 30,000-unit maximum with `3x` and `4x` on most stages.
+
 ## Performance
 
 The extra frame and the longer draw distance are processed by the *emulated* PS1 CPU, so the overclock you need depends on the draw distance and the stage.
@@ -61,6 +63,7 @@ If the frame rate drops in big outdoor areas, raise the overclock or pick a lowe
 ## Known limitations
 
 - **DuckStation only,** because of the 8 MB RAM requirement. It does not run on real hardware or on emulators without an 8 MB RAM option.
+- **Torches and other light/fire effects appear at their original distance**, because their animation and hazards are tied to it.
 - **Fire, smoke and other stage effects animate at 30fps,** like the original. They are drawn at the interpolated camera position on every frame, but their animation only advances on logic steps.
 - **The HUD, map screen and some particle effects** are re-shown from the previous logic step on the extra frame rather than redrawn.
 - **Save states** made with the patch active contain the patched code. Load them with the same patch version.

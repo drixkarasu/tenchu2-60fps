@@ -9,7 +9,7 @@ Usage:  python build_patch.py [--exe path/to/GAME.EXE] [out_basename]
 GAME.EXE is TENCHU2\GAME.EXE from your own US disc (extract it with mkpsxiso/dumpsxiso).
 Default path: game/extracted/US/TENCHU2/GAME.EXE relative to the repository root, or $TENCHU2_GAME_EXE.
 
-Internal build history: this is build "B14"; see docs/TECHNICAL.md.
+Internal build history: this is build "B15"; see docs/TECHNICAL.md.
 """
 import struct, sys, os
 _args = sys.argv[1:]
@@ -83,6 +83,9 @@ WORKBASE           = 0x800CD430   # libgs GsOUT_PACKET_P
 CUR_OT             = 0x8008CECC   # -> current GsOT {len, org, offset, point, tag}
 PKT_START          = 0x8008CED0   # start of current packet buffer
 EXTRA              = 0x80608050   # B14: 1 while the extra (draw-only) frame runs Stage_Draw
+FARF               = 0x80608054   # B15: current stage object is beyond the stock range (draw only, no collision)
+FOG_CAP            = 2000         # B15: fog is full by this distance (~32000 units: the minimum reach of the 4x4 block window)
+PROP_CAP           = 30000        # B15: max stage-object draw range (object offsets are 16-bit in FUN_8004E35C)
 LSAVE              = 0x80638000   # B14: saved light/effect counters (+0x14, 0x18-byte entries)
 OSAVE              = 0x80639000   # B14: saved stage-object counters (+0x6A, 0x78-byte entries)
 PKT_BASE           = 0x80640000   # B13: 2 packet buffers (stock: 2 x 0x14000 at 0x80096AE8, the 2nd one ends at
@@ -133,6 +136,7 @@ class Asm:
     def srav(s,rd,rt,rs): s.Rr(rs,rt,rd,0,7)
     def sllv(s,rd,rt,rs): s.Rr(rs,rt,rd,0,4)
     def word(s,w): s.emit(lambda pc,w=w:w)
+    def xori(s,rt,rs,imm): s.I(14,rs,rt,imm)
     def la_l(s,r,lbl):   # la of a label (resolved at the end)
         s.emit(lambda pc:(15<<26)|(R[r]<<16)|(((s.labels[lbl]+0x8000)>>16)&0xffff))
         s.emit(lambda pc:(9<<26)|(R[r]<<21)|(R[r]<<16)|(s.labels[lbl]&0xffff))
@@ -173,7 +177,9 @@ a.L('dd_fac'); a.mult('t1','t2'); a.mflo('t3'); a.sra('t3','t3',2)
 a.lui('t4',0x8009); a.sw('t3',DRAWDIST-0x80090000,'t4')
 # B11 fog: start S = stock D - 256 (as stock), black by the new D: k = floor(log2((Dnew - S) / 256))
 a.sw('t3',FOG_D-DD_STOCK,'t0')
-a.addiu('t5','t1',-0x100); a.subu('t6','t3','t5'); a.srl('t6','t6',9); a.move('t8','zero')
+a.addiu('t5','t1',-0x100)
+a.move('t7','t3'); a.slti('t6','t3',FOG_CAP); a.bnez('t6','fcap'); a.nop(); a.addiu('t7','zero',FOG_CAP)   # B15: fog end = min(D, cap)
+a.L('fcap'); a.subu('t6','t7','t5'); a.srl('t6','t6',9); a.move('t8','zero')
 a.L('k_l'); a.beqz('t6','k_d'); a.nop(); a.srl('t6','t6',1); a.b('k_l'); a.addiu('t8','t8',1)
 a.L('k_d')
 a.sw('t8',FOG_K-DD_STOCK,'t0')
@@ -487,6 +493,27 @@ a.L('B14_SndGate')   # entry of FUN_8001E858 (positional sound): silent on the e
 a.la('t0',EXTRA); a.lw('t0',0,'t0'); a.nop()
 a.beqz('t0','snd_go'); a.nop(); a.jr('ra'); a.move('v0','zero')
 a.L('snd_go'); a.addiu('sp','sp',-0x30); a.lui('v1',0x8009); a.j_abs(0x8001E860); a.nop()
+# ---- B15: stage objects drawn out to stock range x factor (capped); beyond the stock range: no collision/logic ----
+a.L('B15_Range')     # at 0x80050238 in FUN_8004FFAC. in: a0 = distance, s5 = stage range value. out: v0 = 1 if too far
+a.sll('v1','s5',1); a.addu('v1','v1','s5'); a.sra('v1','v1',2)          # stock draw range = value * 3 / 4
+a.slt('t0','v1','a0')                                                   # beyond stock range
+a.la('t1',DD_FACTOR); a.lw('t2',0,'t1'); a.nop()
+a.bnez('t2','pr_f'); a.nop(); a.addiu('t2','zero',4)
+a.L('pr_f'); a.mult('v1','t2'); a.mflo('t2'); a.sra('t2','t2',2)
+a.slti('t3','t2',PROP_CAP); a.bnez('t3','pr_c'); a.nop(); a.addiu('t2','zero',PROP_CAP)
+a.L('pr_c'); a.slt('t3','t2','v1'); a.beqz('t3','pr_s'); a.nop(); a.move('t2','v1')   # never below stock
+a.L('pr_s'); a.slt('v0','t2','a0')
+a.xori('t3','v0',1); a.and_('t3','t3','t0')
+a.la('t1',FARF); a.jr('ra'); a.sw('t3',0,'t1')
+def far_gate(name, target, far_target=None):
+    a.L(name); a.la('t0',FARF); a.lw('t0',0,'t0'); a.nop()
+    a.bnez('t0',name+'_far'); a.nop(); a.j_abs(target); a.nop()
+    a.L(name+'_far')
+    if far_target: a.j_abs(far_target); a.nop()
+    else: a.jr('ra'); a.nop()
+far_gate('B15_Reg', 0x8004D094, 0x8004D2C8)   # far: unregister collision instead of registering
+far_gate('B15_Fbb0', 0x8004FBB0)              # far: falling-object animation keeps its stock range
+far_gate('B15_E944', 0x8004E944)              # far: object fire effect (and its hitbox) keeps its stock range
 # ---- FOGTAB: (site address, original instruction) ----
 a.L('FOGTAB')
 for site in FOG_SITES:
@@ -553,6 +580,14 @@ hooks += [
     (0x8004BDE8, 0x0C012BB3, jal_word(labels['B14_SkipMusic']),    'Stage_Draw: FUN_8004AECC -> skip on extra frame'),
     (0x8001E858, 0x27BDFFD0, 0x08000000 | ((labels['B14_SndGate'] & 0x0FFFFFFF) >> 2), 'sound: gate on extra frame'),
     (0x8001E85C, 0x3C038009, 0x00000000, 'sound: (moved into gate)'),
+]
+def _w(ad): return struct.unpack_from('<I', EXE, ad - 0x80012000 + 0x800)[0]
+hooks += [(0x80050238, _w(0x80050238), jal_word(labels['B15_Range']), 'objects: draw range')]
+hooks += [(ad, _w(ad), 0, 'objects: draw range (nop)') for ad in range(0x8005023C, 0x80050250, 4)]
+hooks += [
+    (0x80050334, _w(0x80050334), jal_word(labels['B15_Reg']),  'objects: collision register gate'),
+    (0x8005035C, _w(0x8005035C), jal_word(labels['B15_Fbb0']), 'objects: falling object gate'),
+    (0x800505B4, _w(0x800505B4), jal_word(labels['B15_E944']), 'objects: fire effect gate'),
 ]
 # per-polygon fog early-out: `subu t4,t6,s1` -> `subu t4,t6,s2` (s2 = unshifted fog start, set by B10_FogStart)
 for site in (0x80019224,0x80019338,0x800194B4,0x800196CC,0x80019930,0x80019AE8):
