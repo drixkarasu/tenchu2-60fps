@@ -1,0 +1,22 @@
+# Never commit game data, disc images or BIOS files
+game/
+*.bin
+!cheats/*.bin
+*.cue
+*.iso
+*.img
+*.chd
+*.pbp
+*.ecm
+*.EXE
+*.exe
+bios/
+*.srm
+*.mcd
+*.sav
+*.sstate
+
+# Build and test output
+tools/results/
+__pycache__/
+*.pyc
