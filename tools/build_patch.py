@@ -84,7 +84,6 @@ CUR_OT             = 0x8008CECC   # -> current GsOT {len, org, offset, point, ta
 PKT_START          = 0x8008CED0   # start of current packet buffer
 EXTRA              = 0x80608050   # B14: 1 while the extra (draw-only) frame runs Stage_Draw
 FARF               = 0x80608054   # B15: current stage object is beyond the stock range (draw only, no collision)
-FOG_CAP            = 2000         # B15: fog is full by this distance (~32000 units: the minimum reach of the 4x4 block window)
 PROP_CAP           = 30000        # B15: max stage-object draw range (object offsets are 16-bit in FUN_8004E35C)
 LSAVE              = 0x80638000   # B14: saved light/effect counters (+0x14, 0x18-byte entries)
 OSAVE              = 0x80639000   # B14: saved stage-object counters (+0x6A, 0x78-byte entries)
@@ -177,9 +176,7 @@ a.L('dd_fac'); a.mult('t1','t2'); a.mflo('t3'); a.sra('t3','t3',2)
 a.lui('t4',0x8009); a.sw('t3',DRAWDIST-0x80090000,'t4')
 # B11 fog: start S = stock D - 256 (as stock), black by the new D: k = floor(log2((Dnew - S) / 256))
 a.sw('t3',FOG_D-DD_STOCK,'t0')
-a.addiu('t5','t1',-0x100)
-a.move('t7','t3'); a.slti('t6','t3',FOG_CAP); a.bnez('t6','fcap'); a.nop(); a.addiu('t7','zero',FOG_CAP)   # B15: fog end = min(D, cap)
-a.L('fcap'); a.subu('t6','t7','t5'); a.srl('t6','t6',9); a.move('t8','zero')
+a.addiu('t5','t1',-0x100); a.subu('t6','t3','t5'); a.srl('t6','t6',9); a.move('t8','zero')
 a.L('k_l'); a.beqz('t6','k_d'); a.nop(); a.srl('t6','t6',1); a.b('k_l'); a.addiu('t8','t8',1)
 a.L('k_d')
 a.sw('t8',FOG_K-DD_STOCK,'t0')
