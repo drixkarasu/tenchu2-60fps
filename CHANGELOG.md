@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.0 (2026-11-04)
+
+- Fixed characters (and other far polygons) sometimes showing through walls at 3x and 4x. The game's 2048-entry ordering table only covers depths up to about 32,000 units; at longer draw distances, far polygons were written past its end, into the other frame's table or into memory that is never drawn. The ordering tables are now 8192 entries (in the 8 MB area), so everything up to the GTE's maximum depth sorts correctly.
+- The sky is sorted behind everything else, so level geometry beyond the sky dome's radius is no longer hidden by it. Far scenery that was silently dropped before can now appear at 3x and 4x.
+
 ## 1.1.0 (2026-11-02)
 
 - Stage objects (props, boats, crates and similar) are drawn out to their original range x the draw distance preset (capped at 30,000 units) instead of always popping in at the original range. Beyond the original range they are drawn only: no collision, and their logic (falling objects, object fire effects) keeps the original range.

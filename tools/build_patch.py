@@ -9,7 +9,7 @@ Usage:  python build_patch.py [--exe path/to/GAME.EXE] [out_basename]
 GAME.EXE is TENCHU2\GAME.EXE from your own US disc (extract it with mkpsxiso/dumpsxiso).
 Default path: game/extracted/US/TENCHU2/GAME.EXE relative to the repository root, or $TENCHU2_GAME_EXE.
 
-Internal build history: this is build "B15"; see docs/TECHNICAL.md.
+Internal build history: this is build "B16"; see docs/TECHNICAL.md.
 """
 import struct, sys, os
 _args = sys.argv[1:]
@@ -83,6 +83,13 @@ WORKBASE           = 0x800CD430   # libgs GsOUT_PACKET_P
 CUR_OT             = 0x8008CECC   # -> current GsOT {len, org, offset, point, tag}
 PKT_START          = 0x8008CED0   # start of current packet buffer
 EXTRA              = 0x80608050   # B14: 1 while the extra (draw-only) frame runs Stage_Draw
+OT_LEN             = 13           # B16: 8192-entry ordering tables (stock: 11 = 2048, overflowed past depth 32768)
+OT0_ORG            = 0x806E0000   # B16: OT 0 (0x8000 bytes + 0x8000 spare)
+OT1_ORG            = 0x806F0000   # B16: OT 1
+GSOT               = 0x80092A20   # the game's two GsOT headers (0x14 bytes each)
+GsClearOt          = 0x80071FC0
+SKY_D              = 0x7FF        # Stage_Draw sets D to this while it draws the sky (0x8004BA18)
+SKY_BIAS           = 0x1000       # B16: sky sorted 4096 entries further back than anything else
 FARF               = 0x80608054   # B15: current stage object is beyond the stock range (draw only, no collision)
 PROP_CAP           = 30000        # B15: max stage-object draw range (object offsets are 16-bit in FUN_8004E35C)
 LSAVE              = 0x80638000   # B14: saved light/effect counters (+0x14, 0x18-byte entries)
@@ -165,6 +172,14 @@ a = Asm(BASE)
 # ---- B1_CamHook: replaces `jal Camera_Update` in Mission_MainLoop ----
 a.L('B1_CamHook')
 a.addiu('sp','sp',-24); a.sw('ra',20,'sp')
+# B16: bigger ordering tables in 8 MB. GAME.EXE's init is patched too; this catches an init that ran before the cheat applied
+a.lui('t0',GSOT>>16); a.lw('t1',GSOT&0xFFFF,'t0'); a.nop(); a.addiu('t2','zero',OT_LEN)
+a.beq_('t1','t2','ot_ok'); a.nop()
+a.sw('t2',(GSOT&0xFFFF),'t0'); a.sw('t2',(GSOT&0xFFFF)+0x14,'t0')
+a.lui('t1',OT0_ORG>>16); a.sw('t1',(GSOT&0xFFFF)+4,'t0'); a.lui('t1',OT1_ORG>>16); a.sw('t1',(GSOT&0xFFFF)+0x18,'t0')
+a.move('a0','zero'); a.move('a1','zero'); a.jal(GsClearOt); a.addiu('a2','t0',GSOT&0xFFFF)
+a.lui('a2',GSOT>>16); a.move('a0','zero'); a.move('a1','zero'); a.jal(GsClearOt); a.addiu('a2','a2',(GSOT&0xFFFF)+0x14)
+a.L('ot_ok')
 # draw distance: render = stock * factor / 4 (only once the stage loader has set a stock value)
 a.la('t0',DD_STOCK); a.lw('t1',0,'t0'); a.lw('t2',4,'t0'); a.nop()
 a.bnez('t1','dd_have'); a.nop()
@@ -449,6 +464,8 @@ a.bne('t6','s2','fs_other'); a.nop()
 a.lw('s1',FOG_S-(FHI<<16),'t4'); a.b('fs_fin'); a.nop()     # render distance: precomputed start
 a.L('fs_other')
 a.addiu('s1','s2',-0x100); a.srav('s1','s1','t5')             # any other D (e.g. 0x7FF override): same start
+a.addiu('t6','zero',SKY_D); a.bne('s2','t6','fs_fin'); a.nop()
+a.addiu('t2','t2',SKY_BIAS)                                    # B16: sky -> behind everything (t2 = OT bias, live here)
 a.L('fs_fin')
 a.addiu('t6','s1',1); a.sllv('t6','t6','t5'); a.jr('t3'); a.addiu('s2','t6',-1)
 # ---- B14: Stage_Draw tail on the extra frame ----
@@ -579,6 +596,12 @@ hooks += [
     (0x8001E85C, 0x3C038009, 0x00000000, 'sound: (moved into gate)'),
 ]
 def _w(ad): return struct.unpack_from('<I', EXE, ad - 0x80012000 + 0x800)[0]
+hooks += [
+    (0x80017130, _w(0x80017130), 0x24020000 | OT_LEN,              'ordering tables: length'),
+    (0x8001713C, _w(0x8001713C), 0x3C020000 | (OT0_ORG >> 16),     'ordering tables: OT 0 (lui)'),
+    (0x80017140, _w(0x80017140), 0x24420000 | (OT0_ORG & 0xFFFF),  'ordering tables: OT 0 (addiu)'),
+    (0x80017148, _w(0x80017148), 0x3C020000 | (OT1_ORG >> 16),     'ordering tables: OT 1 (lui)'),
+]
 hooks += [(0x80050238, _w(0x80050238), jal_word(labels['B15_Range']), 'objects: draw range')]
 hooks += [(ad, _w(ad), 0, 'objects: draw range (nop)') for ad in range(0x8005023C, 0x80050250, 4)]
 hooks += [
