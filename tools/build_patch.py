@@ -9,7 +9,7 @@ Usage:  python build_patch.py [--exe path/to/GAME.EXE] [out_basename]
 GAME.EXE is TENCHU2\GAME.EXE from your own US disc (extract it with mkpsxiso/dumpsxiso).
 Default path: game/extracted/US/TENCHU2/GAME.EXE relative to the repository root, or $TENCHU2_GAME_EXE.
 
-Internal build history: this is build "B17"; see docs/TECHNICAL.md.
+Internal build history: this is build "B18"; see docs/TECHNICAL.md.
 """
 import struct, sys, os
 _args = sys.argv[1:]
@@ -90,6 +90,7 @@ GSOT               = 0x80092A20   # the game's two GsOT headers (0x14 bytes each
 GsClearOt          = 0x80071FC0
 SKY_D              = 0x7FF        # Stage_Draw sets D to this while it draws the sky (0x8004BA18)
 SKY_BIAS           = 0x1000       # B16: sky sorted 4096 entries further back than anything else
+DD_MAX             = 4000         # B18: max render distance (x16 = 64000 < 65535, the GTE's saturated depth)
 FARF               = 0x80608054   # B15: current stage object is beyond the stock range (draw only, no collision)
 PROP_CAP           = 30000        # B15: max stage-object draw range (object offsets are 16-bit in FUN_8004E35C)
 LSAVE              = 0x80638000   # B14: saved light/effect counters (+0x14, 0x18-byte entries)
@@ -188,6 +189,8 @@ a.beqz('t1','dd_skip'); a.nop(); a.sw('t1',0,'t0')                  # the game's
 a.L('dd_have')
 a.bnez('t2','dd_fac'); a.nop(); a.addiu('t2','zero',4)
 a.L('dd_fac'); a.mult('t1','t2'); a.mflo('t3'); a.sra('t3','t3',2)
+a.slti('t4','t3',DD_MAX); a.bnez('t4','dd_cap'); a.nop(); a.addiu('t3','zero',DD_MAX)   # B18: keep D*16 below the GTE depth limit
+a.L('dd_cap')
 a.lui('t4',0x8009); a.sw('t3',DRAWDIST-0x80090000,'t4')
 # B11 fog: start S = stock D - 256 (as stock), black by the new D: k = floor(log2((Dnew - S) / 256))
 a.sw('t3',FOG_D-DD_STOCK,'t0')

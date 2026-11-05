@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.5 (2026-11-05)
+
+- Fixed small black squares appearing against the sky at 4x (and 3x on stages with a long original distance). The PS1's geometry processor can't measure depth beyond 65,535 units: anything further reads as exactly that depth. At 4x the draw-distance cut-off was set past that limit, so it never removed those polygons. They were drawn fully fogged (black), at a wrong position, just in front of the sky. The render distance is now capped at 64,000 units.
+
 ## 1.4 (2026-11-05)
 
 - Fixed small black squares sometimes appearing in front of everything at 3x and 4x. The extra 60fps frame re-shows some packets from the previous frame (HUD, map, particles) by walking the ordering table; that walk still assumed the old 2048-entry table, so far particles (fully fogged, so black) were re-shown in the frontmost slot. The walk now uses the table's real size.
