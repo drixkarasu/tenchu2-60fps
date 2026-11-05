@@ -9,7 +9,7 @@ Usage:  python build_patch.py [--exe path/to/GAME.EXE] [out_basename]
 GAME.EXE is TENCHU2\GAME.EXE from your own US disc (extract it with mkpsxiso/dumpsxiso).
 Default path: game/extracted/US/TENCHU2/GAME.EXE relative to the repository root, or $TENCHU2_GAME_EXE.
 
-Internal build history: this is build "B16"; see docs/TECHNICAL.md.
+Internal build history: this is build "B17"; see docs/TECHNICAL.md.
 """
 import struct, sys, os
 _args = sys.argv[1:]
@@ -402,9 +402,10 @@ a.lw('t2',8,'t0')                                                  # range 2 sta
 a.nop()
 a.lui('t3',0x8009); a.lw('t3',CUR_OT-0x80090000,'t3'); a.nop()
 a.lw('t4',4,'t3'); a.lw('t5',16,'t3'); a.nop()                     # org, tag
-a.addiu('t6','t4',0x2000)                                          # org end (2048 entries)
+a.lw('t6',0,'t3'); a.addiu('a0','zero',4); a.nop()
+a.sllv('t6','a0','t6'); a.addu('t6','t4','t6')                     # org end = org + 4 << length (B16+: 8192 entries)
 a.la('t7',CAPBUF); a.addiu('t8','zero',0); a.addiu('t9','zero',0)
-a.lui('v1',0); a.ori('v1','v1',20000)                              # step guard
+a.lui('v1',4)                                                       # step guard (0x40000: OT entries + packets)
 a.L('wl')
 a.sltu('v0','t5','t4'); a.bnez('v0','notot'); a.nop()
 a.sltu('v0','t5','t6'); a.beqz('v0','notot'); a.nop()
